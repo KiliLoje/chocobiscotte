@@ -123,8 +123,9 @@ ff6_command_t ff6_parse_command(void *parser_ctx)
     .opcode = getitem(ctx)
   };
 
-  if (command.opcode < 0x35) { // action commands
-    command.argc = (checkitem(ctx, 0) % 0x80) + 1;
+  if (command.opcode < 0x35) {
+    u8 size = getitem(ctx);
+    command.argc = ff6_parse_action_queue(command.actions, ctx, size);
   } else {
     switch (command.opcode) {
       case 0x73:
@@ -145,44 +146,73 @@ ff6_command_t ff6_parse_command(void *parser_ctx)
         command.argc = commands_argument_counts[command.opcode];
         break;
     }
+    command.argv = getitems(ctx, command.argc);
   }
-  command.address = ctx->index - 1;
-  command.argv = getitems(ctx, command.argc);
   return command;
 }
 
-ff6_action_queue_t ff6_parse_action_queue(void *parser_ctx)
+/* returns the number of actions parsed, and put the actual list of parsed commands into the dest parameter */
+u8 ff6_parse_action_queue(void *dest, void *parser_ctx, u8 expected_size)
 {
   ff6_command_parser_t *ctx = (ff6_command_parser_t *)parser_ctx;
 
-  ff6_action_queue_t queue = {
-    .address = ctx->index,
-    .opcode = getitem(ctx),
-    .size = getitem(ctx),
-    .argv = calloc(0x7F, sizeof(ff6_action_command_t)),
-  };
+  ff6_action_command_t *actions = calloc(0x7F, sizeof(ff6_action_command_t));
 
-  if (!queue.argv) {
-    printf("calloc failed");
+  if (!actions) {
+    printf("failed to calloc\n");
     exit(1);
   }
 
-  if (!queue.size) {
-    free(queue.argv);
-    queue.argv = NULL;
-    return queue;
+  u8 count, size = 0;
+  do {
+    actions[count] = ff6_parse_action_command(ctx);
+    size += 1 + actions[count].argc;
+    count++;
+  } while(size <= expected_size && actions[count].opcode != 0xFF);
+  actions = realloc(actions, sizeof(ff6_action_command_t) * count);
+  if (!actions) {
+    printf("failed to realloc\n");
+    exit(1);
   }
 
-  u8 argc;
-  do {
-    queue.argv[argc] = ff6_parse_action_command(ctx);
-    argc++;
-  } while(queue.argv[argc].opcode != 0xFF);
-
-  return queue;
+  return count;
 }
 
 ff6_action_command_t ff6_parse_action_command(void *parser_ctx)
 {
+  ff6_command_parser_t *ctx = (ff6_command_parser_t *)parser_ctx;
 
+  ff6_action_command_t command = {
+    .address = ctx->index,
+    .opcode = getitem(ctx),
+  };
+
+  switch (command.opcode) {
+    case 0xC8:
+    case 0xC9:
+    case 0xE0:
+    case 0xE1:
+    case 0xE2:
+    case 0xE3:
+    case 0xE4:
+    case 0xE5:
+    case 0xE6:
+    case 0xF1:
+    case 0xFB:
+    case 0xFC:
+    case 0xFD:
+      command.argc = 1;
+      break;
+    case 0xD5:
+      command.argc = 2;
+      break;
+    case 0xF9:
+      command.argc = 3;
+      break;
+    default:
+      command.argc = 0;
+      break;
+  }
+  command.argv = getitems(ctx, command.argc);
+  return command;
 }

@@ -29,7 +29,18 @@ int main(int argc, char *argv[]) {
   for (int i = 0; i < count; i ++) {
     ff6_command_t cmd = ff6_parse_command(&parser);
     printf("%x: %02x  ", cmd.address, cmd.opcode);
-    for (int i = 0; i < cmd.argc; i ++) printf("%02x ", cmd.argv[i]);
+    if (cmd.opcode <= 0x35) {
+      for (int i = 0; i < cmd.argc; i++) {
+        printf("\n");
+        printf("    %x: %02x  ", cmd.actions[i].address, cmd.actions[i].opcode);
+        for (int j = 0; j < cmd.actions[i].argc; j++) {
+          printf("%02x ", cmd.actions[i].argv[j]);
+        }
+      }
+    } else {
+      for (int i = 0; i < cmd.argc; i++)
+        printf("%02x ", cmd.argv[i]);
+    }
     printf("\n");
   }
 
